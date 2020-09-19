@@ -4,16 +4,18 @@ const path = require('path');
 const express = require('express');
 const helmet = require('helmet');
 
-const githubRouter = require('./routes/githubRouter');
+const githubRouter = require('./routers/githubRouter');
+const runCommandLine = require('./shell/gitcmd')
 
 const app = express();
 app.use(helmet());
-app.use(express.urlencoded());
+app.use(express.urlencoded({extended: true}));
 app.use(express.json());
 
 app.use('/github', githubRouter);
 app.get('/', (req, res) => {
-  res.send('Server for Webhook')
+  res.send('Server for Webhook');
+  runCommandLine();
 })
 
 const port = process.env.PORT || 5052;

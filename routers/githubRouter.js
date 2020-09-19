@@ -16,7 +16,8 @@ githubRouter.use(validate);
 
 githubRouter.post('/', (req, res, next) => {
   console.log("is validated ",res.locals.validated)
-  console.log('admin route', res.body)
+  console.log('admin route', req.body)
+  res.send('success')
 })
 
 module.exports = githubRouter;
