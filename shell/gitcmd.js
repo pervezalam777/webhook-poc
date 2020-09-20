@@ -2,101 +2,87 @@ var fs = require('fs');
 var path = require('path');
 var shell = require('shelljs');
 
-//const repoPath = 'gitrepos'
-const repoPath = path.join(__dirname, '../gitrepos');
+const REPO_PATH = path.join(__dirname, '../gitrepos');
+const SOURCE_REPO = 'webhook-main-repo';
+const DESTINATION_REPO = 'webhook-connect-one';
+const PR_MERGE_TO_BRANCH = 'master'
 
-function runCommonLine() {
+function runCommonLine(commitDetails) {
   if (!shell.which('git')) {
     shell.echo('Sorry, this script requires git');
     shell.exit(1);
   }
-  processGitSync();
+  processGitSync(commitDetails);
 }
 
-function processGitSync(){
-  console.log('clone started..');
-  cloneMainRepo();
-  cloneSecondRepo();
-  console.log('clone ended....')
-  
-  console.log('checkout to a changeset start...')
-  checkoutChangeset('webhook-main-repo', 'ec6e8184d609896f927a1382c105dc92e5c23361');
-  console.log('checkout to a changeset end...')
-
-  console.log('new branch create start....')
-  createABranch('webhook-connect-one', 'translation_1');
-  console.log('new branch create end....')
-
-  console.log('copy json files.... start')
-  copyLocales();
-  console.log('copy json files.... end..')
-
-  console.log('commit start')
-  commitChanges();
-  console.log('commit end...')
-
-  pushAndRaisePR();
+function processGitSync(commitDetails){
+  const prBranchName =  'translation_'+commitDetails.id;
+  cloneSourceRepo();
+  cloneDestinationRepo();
+  checkoutChangeset(SOURCE_REPO, commitDetails.id);
+  createPrBranch(DESTINATION_REPO, prBranchName);
+  copyDataFromSourceToDestination();
+  commitChanges(`[${commitDetails.committer.username}] ${commitDetails.message}`);
+  pushAndRaisePR(prBranchName);
+  console.log(`PR raised for ${prBranchName}`);
 }
 
-function pushAndRaisePR(){
-  const connectOneRepoPath = path.join(repoPath, 'webhook-connect-one');
-  shell.pushd(connectOneRepoPath);
-  shell.exec(`git push --set-upstream origin translation_1`);
-  shell.exec(`hub pull-request -b master -m "test"`)
+function cloneSourceRepo() {
+  const repoUrl = `https://github.com/pervezalam777/${SOURCE_REPO}.git`;
+  doCloneRepo(repoUrl, SOURCE_REPO);
 }
 
-function commitChanges() {
-  const connectOneRepoPath = path.join(repoPath, 'webhook-connect-one');
-  shell.pushd(connectOneRepoPath);
-  shell.exec('git add .');
-  shell.exec('git commit -m "translation updated"');
+function cloneDestinationRepo(){
+  const repoUrl = `https://github.com/pervezalam777/${DESTINATION_REPO}.git`;
+  doCloneRepo(repoUrl, DESTINATION_REPO);
 }
 
-function copyLocales(){
-  shell.pushd(repoPath);
-  const mainRepo = path.join(repoPath , 'webhook-main-repo', 'public', 'locales');
-  const distRepo = path.join(repoPath, 'webhook-connect-one', 'public', 'locales');
-  shell.mkdir('-p',distRepo);
-  shell.cp('-r', mainRepo, distRepo);
-}
-
-function createABranch(repoName, branchName) {
-  const cwdPath = path.join(repoPath, repoName);
-  shell.pushd(cwdPath);
-  shell.exec(`git branch ${branchName}`);
-  shell.exec(`git checkout ${branchName}`);
+function doCloneRepo(repo, repoName) {
+  try {
+    fs.readdirSync(path.join(REPO_PATH, repoName));
+  } catch(err) {
+    shell.pushd(REPO_PATH);
+    shell.exec(`git clone ${repo}`);
+  }
 }
 
 function checkoutChangeset(repoName, changeset) {
-  const cwdPath = path.join(repoPath, repoName)
+  const cwdPath = path.join(REPO_PATH, repoName)
   shell.pushd(cwdPath);
   shell.exec('git pull');
   shell.exec(`git checkout ${changeset}`)
 }
 
-function cloneSecondRepo(){
-  const repoUrl = 'https://github.com/pervezalam777/webhook-connect-one.git';
-  doCloneRepo(repoUrl, 'webhook-connect-one');
+function createPrBranch(repoName, prBranchName) {
+  const cwdPath = path.join(REPO_PATH, repoName);
+  shell.pushd(cwdPath);
+  shell.exec(`git pull`);
+  shell.exec(`git checkout origin/${PR_MERGE_TO_BRANCH}`);
+  shell.exec(`git branch ${prBranchName}`);
+  shell.exec(`git checkout ${prBranchName}`);
 }
 
-function cloneMainRepo() {
-  const repoUrl = 'https://github.com/pervezalam777/webhook-main-repo.git';
-  doCloneRepo(repoUrl, 'webhook-main-repo');
+function copyDataFromSourceToDestination(){
+  const commonPath = path.join('public', 'locales');
+  shell.pushd(REPO_PATH);
+  const mainRepo = path.join(REPO_PATH, SOURCE_REPO, commonPath);
+  const distRepo = path.join(REPO_PATH, DESTINATION_REPO, commonPath);
+  shell.mkdir('-p', distRepo);
+  shell.cp('-r', mainRepo, distRepo);
 }
 
-function doCloneRepo(repo, repoName) {
-  try {
-    fs.readdirSync(path.join(repoPath, repoName));
-  } catch(err) {
-    shell.pushd(repoPath);
-    const cmd = `git clone ${repo}`;
-    //TODO: as per doc it is synchronous call.
-    shell.exec(cmd, function(code, stdout, stderr) {
-      console.log('Exit code:', code);
-      console.log('Program output:', stdout);
-      console.log('Program stderr:', stderr);
-    });
-  }
+function commitChanges(message) {
+  const connectOneRepoPath = path.join(REPO_PATH, DESTINATION_REPO);
+  shell.pushd(connectOneRepoPath);
+  shell.exec('git add .');
+  shell.exec(`git commit -m "${message}"`);
+}
+
+function pushAndRaisePR(prBranchName){
+  const connectOneRepoPath = path.join(REPO_PATH, DESTINATION_REPO);
+  shell.pushd(connectOneRepoPath);
+  shell.exec(`git push --set-upstream origin ${prBranchName}`);
+  shell.exec(`hub pull-request -b ${PR_MERGE_TO_BRANCH} -m "${prBranchName}"`)
 }
 
 module.exports = runCommonLine;
